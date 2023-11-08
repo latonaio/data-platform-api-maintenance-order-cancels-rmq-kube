@@ -37,7 +37,7 @@ func (c *DPFMAPICaller) HeaderRead(
 func (c *DPFMAPICaller) ItemsRead(
 	input *dpfm_api_input_reader.SDC,
 	log *logger.Logger,
-) *[]dpfm_api_output_formatter.Item {
+) *[]dpfm_api_output_formatter.ObjectListItem {
 	where := fmt.Sprintf("WHERE item.MaintenanceOrderItem IS NOT NULL\nAND header.MaintenanceOrder = %d", input.Header.MaintenanceOrder)
 	rows, err := c.db.Query(
 		`SELECT 
@@ -51,7 +51,7 @@ func (c *DPFMAPICaller) ItemsRead(
 	}
 	defer rows.Close()
 
-	data, err := dpfm_api_output_formatter.ConvertToItem(rows)
+	data, err := dpfm_api_output_formatter.ConvertToObjectListItem(rows)
 	if err != nil {
 		log.Error("%+v", err)
 		return nil
@@ -59,4 +59,3 @@ func (c *DPFMAPICaller) ItemsRead(
 
 	return data
 }
-

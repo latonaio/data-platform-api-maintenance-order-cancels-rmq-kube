@@ -53,7 +53,7 @@ func (c *DPFMAPICaller) cancelSqlProcess(
 	log *logger.Logger,
 ) *dpfm_api_output_formatter.Message {
 	var headerData *dpfm_api_output_formatter.Header
-	itemData := make([]dpfm_api_output_formatter.Item, 0)
+	itemData := make([]dpfm_api_output_formatter.ObjectListItem, 0)
 	for _, a := range accepter {
 		switch a {
 		case "Header":
@@ -63,8 +63,8 @@ func (c *DPFMAPICaller) cancelSqlProcess(
 				continue
 			}
 			itemData = append(itemData, *i...)
-		case "Item":
-			i := c.ItemCancel(input, output, log)
+		case "ObjectListItem":
+			i := c.itemCancel(input, output, log)
 			if i == nil {
 				continue
 			}
@@ -73,8 +73,8 @@ func (c *DPFMAPICaller) cancelSqlProcess(
 	}
 
 	return &dpfm_api_output_formatter.Message{
-		Header: headerData,
-		Item:   &itemData,
+		Header:         headerData,
+		ObjectListItem: &itemData,
 	}
 }
 
@@ -82,29 +82,29 @@ func (c *DPFMAPICaller) headerCancel(
 	input *dpfm_api_input_reader.SDC,
 	output *dpfm_api_output_formatter.SDC,
 	log *logger.Logger,
-) (*dpfm_api_output_formatter.Header, *[]dpfm_api_output_formatter.Item) {
+) (*dpfm_api_output_formatter.Header, *[]dpfm_api_output_formatter.ObjectListItem) {
 	sessionID := input.RuntimeSessionID
 
 	header := c.HeaderRead(input, log)
 	if header == nil {
-		return nil, nil, nil, nil
+		return nil, nil
 	}
 	header.IsCancelled = input.Header.IsCancelled
 	res, err := c.rmq.SessionKeepRequest(nil, c.conf.RMQ.QueueToSQL()[0], map[string]interface{}{"message": header, "function": "MaintenanceOrderHeader", "runtime_session_id": sessionID})
 	if err != nil {
 		err = xerrors.Errorf("rmq error: %w", err)
 		log.Error("%+v", err)
-		return nil, nil, nil, nil
+		return nil, nil
 	}
 	res.Success()
 	if !checkResult(res) {
 		output.SQLUpdateResult = getBoolPtr(false)
 		output.SQLUpdateError = "Header Data cannot cancel"
-		return nil, nil, nil, nil
+		return nil, nil
 	}
 	// headerのキャンセルが取り消された時は子に影響を与えない
 	if !*header.IsCancelled {
-		return header, nil, nil, nil
+		return header, nil
 	}
 
 	items := c.ItemsRead(input, log)
@@ -114,13 +114,13 @@ func (c *DPFMAPICaller) headerCancel(
 		if err != nil {
 			err = xerrors.Errorf("rmq error: %w", err)
 			log.Error("%+v", err)
-			return nil, nil, nil, nil
+			return nil, nil
 		}
 		res.Success()
 		if !checkResult(res) {
 			output.SQLUpdateResult = getBoolPtr(false)
 			output.SQLUpdateError = "Item Data cannot cancel"
-			return nil, nil, nil, nil
+			return nil, nil
 		}
 	}
 
@@ -131,15 +131,15 @@ func (c *DPFMAPICaller) itemCancel(
 	input *dpfm_api_input_reader.SDC,
 	output *dpfm_api_output_formatter.SDC,
 	log *logger.Logger,
-) *[]dpfm_api_output_formatter.Item {
+) *[]dpfm_api_output_formatter.ObjectListItem {
 	sessionID := input.RuntimeSessionID
 
-	items := make([]dpfm_api_output_formatter.Item, 0)
-	for _, v := range input.Header.Item {
-		data := dpfm_api_output_formatter.Item{
-			MaintenanceOrder:     input.Header.MaintenanceOrder,
-			MaintenanceOrderItem: v.MaintenanceOrderItem,
-			IsCancelled:         v.IsCancelled,
+	items := make([]dpfm_api_output_formatter.ObjectListItem, 0)
+	for _, v := range input.Header.ObjectListItem {
+		data := dpfm_api_output_formatter.ObjectListItem{
+			MaintenanceOrder:           input.Header.MaintenanceOrder,
+			MaintenanceOrderObjectList: v.MaintenanceObjectListItem,
+			IsCancelled:                v.IsCancelled,
 		}
 		res, err := c.rmq.SessionKeepRequest(nil, c.conf.RMQ.QueueToSQL()[0], map[string]interface{}{
 			"message":            data,
@@ -159,9 +159,9 @@ func (c *DPFMAPICaller) itemCancel(
 		}
 	}
 	// itemがキャンセル取り消しされた場合、headerのキャンセルも取り消す
-	if !*input.Header.Item[0].IsCancelled {
+	if !*input.Header.ObjectListItem[0].IsCancelled {
 		header := c.HeaderRead(input, log)
-		header.IsCancelled = input.Header.Item[0].IsCancelled
+		header.IsCancelled = input.Header.ObjectListItem[0].IsCancelled
 		res, err := c.rmq.SessionKeepRequest(nil, c.conf.RMQ.QueueToSQL()[0], map[string]interface{}{"message": header, "function": "MaintenanceOrderHeader", "runtime_session_id": sessionID})
 		if err != nil {
 			err = xerrors.Errorf("rmq error: %w", err)
